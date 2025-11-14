@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Slider } from '../components/ui/slider';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPost } from '../lib/api';
 
 export function TextToSpeech() {
   const [text, setText] = useState('');
@@ -14,6 +15,50 @@ export function TextToSpeech() {
   const [pitch, setPitch] = useState([1]);
   const [voices, setVoices] = useState([]);
   const [languages, setLanguages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Default TTS voices list (can be fetched from settings API later)
+  const defaultVoices = [
+    { id: 'en-US-Neural2-F', name: 'en-US-Neural2-F - Female', language: 'English (US)', gender: 'Female' },
+    { id: 'en-US-Neural2-M', name: 'en-US-Neural2-M - Male', language: 'English (US)', gender: 'Male' },
+    { id: 'en-GB-Neural2-F', name: 'en-GB-Neural2-F - Female', language: 'English (UK)', gender: 'Female' },
+    { id: 'en-GB-Neural2-M', name: 'en-GB-Neural2-M - Male', language: 'English (UK)', gender: 'Male' },
+    { id: 'es-ES-Neural2-F', name: 'es-ES-Neural2-F - Female', language: 'Spanish (Spain)', gender: 'Female' },
+    { id: 'fr-FR-Neural2-F', name: 'fr-FR-Neural2-F - Female', language: 'French', gender: 'Female' },
+    { id: 'de-DE-Neural2-F', name: 'de-DE-Neural2-F - Female', language: 'German', gender: 'Female' },
+    { id: 'it-IT-Neural2-F', name: 'it-IT-Neural2-F - Female', language: 'Italian', gender: 'Female' },
+  ];
+
+  // Load voices and projects on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Load voices
+        setVoices(defaultVoices);
+        setLanguages([...new Set(defaultVoices.map(v => v.language))]);
+        
+        // Load projects for job creation
+        try {
+          const projectsResponse = await apiGet('/projects/');
+          const projectsList = projectsResponse.results || projectsResponse;
+          if (Array.isArray(projectsList) && projectsList.length > 0) {
+            setProjects(projectsList);
+            setSelectedProjectId(projectsList[0].id);
+          }
+        } catch (err) {
+          console.warn('Could not fetch projects:', err);
+        }
+      } catch (error) {
+        console.warn('Could not load data:', error);
+        setVoices(defaultVoices);
+        setLanguages([...new Set(defaultVoices.map(v => v.language))]);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
@@ -40,6 +85,25 @@ export function TextToSpeech() {
           transition={{ delay: 0.1 }}
           className="lg:col-span-2 space-y-6"
         >
+          {/* Project Selection */}
+          {projects.length > 0 && (
+            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <Label className="text-white mb-3 block">Select Project</Label>
+              <Select value={selectedProjectId?.toString()} onValueChange={(val) => setSelectedProjectId(parseInt(val))}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#16161F] border-white/10">
+                  {projects.map(project => (
+                    <SelectItem key={project.id} value={project.id.toString()} className="text-white">
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Text Input */}
           <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <Label className="text-white mb-3 block">Enter Your Text</Label>
@@ -121,9 +185,58 @@ export function TextToSpeech() {
               whileTap={{ scale: 0.98 }}
               className="mt-6"
             >
-              <Button className="w-full bg-gradient-to-r from-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0 h-12">
+              {successMessage && (
+                <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                  {successMessage}
+                </div>
+              )}
+              <Button 
+                className="w-full bg-gradient-to-r from-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0 h-12 disabled:opacity-50"
+                disabled={loading || !text.trim() || !voice || !selectedProjectId}
+                onClick={async () => {
+                  if (!text.trim() || !voice) return;
+                  if (!selectedProjectId) {
+                    alert('Please select a project first');
+                    return;
+                  }
+                  
+                  setLoading(true);
+                  setSuccessMessage('');
+                  try {
+                    // Create TTS job via API
+                    const jobData = {
+                      project_id: selectedProjectId,
+                      type: 'tts',
+                      status: 'pending',
+                      progress: 0,
+                      meta: {
+                        text: text,
+                        voice: voice,
+                        speed: speed[0],
+                        pitch: pitch[0],
+                      }
+                    };
+                    
+                    const createdJob = await apiPost('/jobs/', jobData);
+                    setSuccessMessage(`TTS job created successfully! Job ID: ${createdJob.id}`);
+                    // Clear form after successful creation
+                    setText('');
+                    setVoice('');
+                    setSpeed([1]);
+                    setPitch([1]);
+                    
+                    // Clear success message after 5 seconds
+                    setTimeout(() => setSuccessMessage(''), 5000);
+                  } catch (error) {
+                    console.error('Failed to create TTS job:', error);
+                    alert(`Failed to create TTS job: ${error.message || 'Please try again.'}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
                 <Play className="w-5 h-5 mr-2" />
-                Generate Speech
+                {loading ? 'Generating...' : 'Generate Speech'}
               </Button>
             </motion.div>
           </div>

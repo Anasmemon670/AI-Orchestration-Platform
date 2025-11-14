@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Slider } from '../components/ui/slider';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPost } from '../lib/api';
 
 const storyGenres = ['Fantasy', 'Sci-Fi', 'Mystery', 'Romance', 'Horror', 'Adventure', 'Comedy', 'Drama'];
 const storyLengths = ['Short (500 words)', 'Medium (1000 words)', 'Long (2000 words)', 'Novel (5000+ words)'];
@@ -16,10 +17,67 @@ export function AIStories() {
   const [length, setLength] = useState('');
   const [creativity, setCreativity] = useState([0.7]);
   const [story, setStory] = useState('');
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const generateStory = () => {
-    // API call will populate story
-    setStory('');
+  // Load projects
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const projectsResponse = await apiGet('/projects/');
+        const projectsList = projectsResponse.results || projectsResponse;
+        if (Array.isArray(projectsList) && projectsList.length > 0) {
+          setProjects(projectsList);
+          setSelectedProjectId(projectsList[0].id);
+        }
+      } catch (err) {
+        console.warn('Could not fetch projects:', err);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  const generateStory = async () => {
+    if (!prompt.trim() || !selectedProjectId) {
+      alert('Please enter a story prompt and select a project');
+      return;
+    }
+    
+    setLoading(true);
+    setSuccessMessage('');
+    try {
+      // Create AI Stories job via API
+      const jobData = {
+        project_id: selectedProjectId,
+        type: 'ai_stories',
+        status: 'pending',
+        progress: 0,
+        meta: {
+          prompt: prompt,
+          genre: genre || 'Fantasy',
+          length: length || 'Medium (1000 words)',
+          creativity: creativity[0],
+        }
+      };
+      
+      const createdJob = await apiPost('/jobs/', jobData);
+      setSuccessMessage(`AI Story job created successfully! Job ID: ${createdJob.id}. Story will be generated in the background.`);
+      
+      // Clear form
+      setPrompt('');
+      setGenre('');
+      setLength('');
+      setCreativity([0.7]);
+      
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch (error) {
+      console.error('Failed to create AI story job:', error);
+      alert(`Failed to create AI story job: ${error.message || 'Please try again.'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,6 +105,25 @@ export function AIStories() {
           transition={{ delay: 0.1 }}
           className="space-y-6"
         >
+          {/* Project Selection */}
+          {projects.length > 0 && (
+            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <Label className="text-white mb-3 block">Select Project</Label>
+              <Select value={selectedProjectId?.toString()} onValueChange={(val) => setSelectedProjectId(parseInt(val))}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#16161F] border-white/10">
+                  {projects.map(project => (
+                    <SelectItem key={project.id} value={project.id.toString()} className="text-white">
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-white mb-6">Story Settings</h3>
             
@@ -109,6 +186,12 @@ export function AIStories() {
               </div>
             </div>
 
+            {successMessage && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                {successMessage}
+              </div>
+            )}
+
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -116,10 +199,11 @@ export function AIStories() {
             >
               <Button 
                 onClick={generateStory}
-                className="w-full bg-gradient-to-r from-[#FF006E] to-[#00D9FF] hover:opacity-90 text-white border-0 h-12"
+                disabled={loading || !prompt.trim() || !selectedProjectId}
+                className="w-full bg-gradient-to-r from-[#FF006E] to-[#00D9FF] hover:opacity-90 text-white border-0 h-12 disabled:opacity-50"
               >
                 <Sparkles className="w-5 h-5 mr-2" />
-                Generate Story
+                {loading ? 'Creating Job...' : 'Generate Story'}
               </Button>
             </motion.div>
           </div>

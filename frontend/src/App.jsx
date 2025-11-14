@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
@@ -13,14 +13,48 @@ import { MovieStudio } from './pages/MovieStudio';
 import { FilmStudio } from './pages/FilmStudio';
 import { AIAgents } from './pages/AIAgents';
 import { Settings } from './pages/Settings';
+import { isAuthenticated, verifyToken, refreshAccessToken, clearAuth } from './lib/auth';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authState, setAuthState] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [theme, setTheme] = useState('dark');
 
-  const handleLogin = () => {
-    setIsAuthenticated(true);
+  // Check authentication status on app load
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (isAuthenticated()) {
+        // Verify token is still valid
+        const verification = await verifyToken();
+        if (verification.valid) {
+          setAuthState(true);
+        } else {
+          // Try to refresh token
+          const refreshResult = await refreshAccessToken();
+          if (refreshResult.success) {
+            setAuthState(true);
+          } else {
+            clearAuth();
+            setAuthState(false);
+          }
+        }
+      } else {
+        setAuthState(false);
+      }
+      setIsCheckingAuth(false);
+    };
+
+    checkAuth();
+  }, []);
+
+  const handleLogin = (userData) => {
+    setAuthState(true);
+  };
+
+  const handleLogout = () => {
+    clearAuth();
+    setAuthState(false);
   };
 
   const handleThemeToggle = () => {
@@ -54,7 +88,16 @@ function App() {
     }
   };
 
-  if (!isAuthenticated) {
+  // Show loading state while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="text-white/60">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!authState) {
     return <Login onLogin={handleLogin} />;
   }
 
@@ -66,7 +109,7 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <Header theme={theme} onThemeToggle={handleThemeToggle} />
+        <Header theme={theme} onThemeToggle={handleThemeToggle} onLogout={handleLogout} />
 
         {/* Page Content with animations */}
         <main className="flex-1 overflow-y-auto">

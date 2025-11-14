@@ -4,15 +4,34 @@ import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 
 const statusConfig = {
-  queued: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
-  processing: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/20', animate: true },
+  pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
+  running: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/20', animate: true },
   completed: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/20' },
   failed: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/20' },
+  cancelled: { icon: XCircle, color: 'text-gray-400', bg: 'bg-gray-500/20' },
+  // Legacy status names for backward compatibility
+  queued: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
+  processing: { icon: Loader2, color: 'text-blue-400', bg: 'bg-blue-500/20', animate: true },
 };
 
 export function JobCard({ job, onClick }) {
-  const config = statusConfig[job.status];
+  const status = job.status || 'pending';
+  const config = statusConfig[status] || statusConfig.pending;
   const StatusIcon = config.icon;
+  
+  // Map job type to display name
+  const jobTypeNames = {
+    stt: 'Speech-to-Text',
+    tts: 'Text-to-Speech',
+    voice_cloning: 'Voice Cloning',
+    dubbing: 'Dubbing',
+    ai_stories: 'AI Stories',
+  };
+  
+  const jobTitle = job.title || `${jobTypeNames[job.type] || job.type} Job`;
+  const jobType = jobTypeNames[job.type] || job.type || 'Unknown';
+  const progress = job.progress || 0;
+  const createdAt = job.created_at || job.createdAt || new Date().toISOString();
 
   return (
     <motion.div
@@ -29,13 +48,13 @@ export function JobCard({ job, onClick }) {
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-            <h3 className="text-white mb-1">{job.title}</h3>
+            <h3 className="text-white mb-1">{jobTitle}</h3>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs bg-white/5 border-white/10 text-white/70">
-                {job.type}
+                {jobType}
               </Badge>
-              {job.model && (
-                <span className="text-xs text-white/50">{job.model}</span>
+              {job.project && (
+                <span className="text-xs text-white/50">{typeof job.project === 'string' ? job.project : job.project.name || 'Unknown Project'}</span>
               )}
             </div>
           </div>
@@ -50,13 +69,13 @@ export function JobCard({ job, onClick }) {
         </div>
 
         {/* Progress */}
-        {job.status === 'processing' && (
+        {(status === 'running' || status === 'processing' || progress > 0) && (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-white/60">Progress</span>
-              <span className="text-xs text-white">{job.progress}%</span>
+              <span className="text-xs text-white">{progress}%</span>
             </div>
-            <Progress value={job.progress} className="h-1.5 bg-white/10" />
+            <Progress value={progress} className="h-1.5 bg-white/10" />
           </div>
         )}
 
@@ -64,11 +83,11 @@ export function JobCard({ job, onClick }) {
         <div className="flex items-center justify-between">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${config.bg}`}>
             <StatusIcon className={`w-4 h-4 ${config.color} ${config.animate ? 'animate-spin' : ''}`} />
-            <span className={`text-xs capitalize ${config.color}`}>{job.status}</span>
+            <span className={`text-xs capitalize ${config.color}`}>{status}</span>
           </div>
           
           <span className="text-xs text-white/50">
-            {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 

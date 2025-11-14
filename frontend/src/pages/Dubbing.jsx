@@ -4,7 +4,8 @@ import { FileUploader } from '../components/FileUploader';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Label } from '../components/ui/label';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPost } from '../lib/api';
 
 export function Dubbing() {
   const [selectedModel, setSelectedModel] = useState('');
@@ -12,8 +13,41 @@ export function Dubbing() {
   const [targetLanguage, setTargetLanguage] = useState('');
   const [languages, setLanguages] = useState([]);
   const [models, setModels] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const dubbingModels = models.filter(m => m.type === 'dubbing');
+
+  // Default languages
+  const defaultLanguages = ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Chinese', 'Japanese', 'Korean', 'Arabic', 'Hindi', 'Russian'];
+
+  // Load projects and languages
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLanguages(defaultLanguages);
+        
+        // Load projects
+        try {
+          const projectsResponse = await apiGet('/projects/');
+          const projectsList = projectsResponse.results || projectsResponse;
+          if (Array.isArray(projectsList) && projectsList.length > 0) {
+            setProjects(projectsList);
+            setSelectedProjectId(projectsList[0].id);
+          }
+        } catch (err) {
+          console.warn('Could not fetch projects:', err);
+        }
+      } catch (error) {
+        console.warn('Could not load data:', error);
+        setLanguages(defaultLanguages);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
@@ -40,10 +74,33 @@ export function Dubbing() {
           transition={{ delay: 0.1 }}
           className="lg:col-span-2 space-y-6"
         >
+          {/* Project Selection */}
+          {projects.length > 0 && (
+            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <Label className="text-white mb-3 block">Select Project</Label>
+              <Select value={selectedProjectId?.toString()} onValueChange={(val) => setSelectedProjectId(parseInt(val))}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#16161F] border-white/10">
+                  {projects.map(project => (
+                    <SelectItem key={project.id} value={project.id.toString()} className="text-white">
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* File Upload */}
           <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-white mb-4">Upload Video</h3>
-            <FileUploader accept="video/*" maxSize="500MB" />
+            <FileUploader 
+              accept="video/*" 
+              maxSize="500MB"
+              onFileSelect={(file) => setUploadedFile(file)}
+            />
           </div>
 
           {/* Settings */}
@@ -118,14 +175,62 @@ export function Dubbing() {
               </div>
             </div>
 
+            {successMessage && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                {successMessage}
+              </div>
+            )}
+
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className="mt-6"
             >
-              <Button className="w-full bg-gradient-to-r from-[#00D9FF] to-[#9D4EDD] hover:opacity-90 text-white border-0 h-12">
+              <Button 
+                className="w-full bg-gradient-to-r from-[#00D9FF] to-[#9D4EDD] hover:opacity-90 text-white border-0 h-12 disabled:opacity-50"
+                disabled={loading || !uploadedFile || !selectedProjectId || !sourceLanguage || !targetLanguage}
+                onClick={async () => {
+                  if (!uploadedFile || !selectedProjectId || !sourceLanguage || !targetLanguage) {
+                    alert('Please fill all required fields: project, file, source language, and target language');
+                    return;
+                  }
+                  
+                  setLoading(true);
+                  setSuccessMessage('');
+                  try {
+                    // Create Dubbing job via API
+                    const jobData = {
+                      project_id: selectedProjectId,
+                      type: 'dubbing',
+                      status: 'pending',
+                      progress: 0,
+                      meta: {
+                        source_language: sourceLanguage,
+                        target_language: targetLanguage,
+                        model: selectedModel || 'default',
+                      }
+                    };
+                    
+                    const createdJob = await apiPost('/jobs/', jobData);
+                    setSuccessMessage(`Dubbing job created successfully! Job ID: ${createdJob.id}`);
+                    
+                    // Clear form
+                    setUploadedFile(null);
+                    setSourceLanguage('');
+                    setTargetLanguage('');
+                    setSelectedModel('');
+                    
+                    setTimeout(() => setSuccessMessage(''), 5000);
+                  } catch (error) {
+                    console.error('Failed to create dubbing job:', error);
+                    alert(`Failed to create dubbing job: ${error.message || 'Please try again.'}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
                 <Play className="w-5 h-5 mr-2" />
-                Start Dubbing
+                {loading ? 'Creating Job...' : 'Start Dubbing'}
               </Button>
             </motion.div>
           </div>

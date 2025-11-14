@@ -6,28 +6,88 @@ import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Progress } from '../components/ui/progress';
-import { useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPost } from '../lib/api';
 
 export function VoiceCloning() {
   const [voiceName, setVoiceName] = useState('');
   const [sampleText, setSampleText] = useState('');
   const [isTraining, setIsTraining] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const startTraining = () => {
+  // Load projects
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const projectsResponse = await apiGet('/projects/');
+        const projectsList = projectsResponse.results || projectsResponse;
+        if (Array.isArray(projectsList) && projectsList.length > 0) {
+          setProjects(projectsList);
+          setSelectedProjectId(projectsList[0].id);
+        }
+      } catch (err) {
+        console.warn('Could not fetch projects:', err);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  const startTraining = async () => {
+    if (!voiceName.trim() || !uploadedFile || !selectedProjectId) {
+      alert('Please fill voice name, upload file, and select project');
+      return;
+    }
+    
+    setLoading(true);
     setIsTraining(true);
     setProgress(0);
+    setSuccessMessage('');
     
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsTraining(false);
-          return 100;
+    try {
+      // Create Voice Cloning job via API
+      const jobData = {
+        project_id: selectedProjectId,
+        type: 'voice_cloning',
+        status: 'pending',
+        progress: 0,
+        meta: {
+          voice_name: voiceName,
+          sample_text: sampleText,
         }
-        return prev + 5;
-      });
-    }, 300);
+      };
+      
+      const createdJob = await apiPost('/jobs/', jobData);
+      setSuccessMessage(`Voice cloning job created successfully! Job ID: ${createdJob.id}`);
+      
+      // Simulate progress for UI feedback
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setIsTraining(false);
+            setLoading(false);
+            // Clear form
+            setVoiceName('');
+            setSampleText('');
+            setUploadedFile(null);
+            setTimeout(() => setSuccessMessage(''), 5000);
+            return 100;
+          }
+          return prev + 5;
+        });
+      }, 300);
+    } catch (error) {
+      console.error('Failed to create voice cloning job:', error);
+      alert(`Failed to create voice cloning job: ${error.message || 'Please try again.'}`);
+      setIsTraining(false);
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,6 +115,25 @@ export function VoiceCloning() {
           transition={{ delay: 0.1 }}
           className="lg:col-span-2 space-y-6"
         >
+          {/* Project Selection */}
+          {projects.length > 0 && (
+            <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+              <Label className="text-white mb-3 block">Select Project</Label>
+              <Select value={selectedProjectId?.toString()} onValueChange={(val) => setSelectedProjectId(parseInt(val))}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#16161F] border-white/10">
+                  {projects.map(project => (
+                    <SelectItem key={project.id} value={project.id.toString()} className="text-white">
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Voice Info */}
           <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-white mb-4">Voice Information</h3>
@@ -77,7 +156,11 @@ export function VoiceCloning() {
             <p className="text-white/60 text-sm mb-4">
               Upload 3-5 minutes of clear audio for best results
             </p>
-            <FileUploader accept="audio/*" maxSize="50MB" />
+            <FileUploader 
+              accept="audio/*" 
+              maxSize="50MB"
+              onFileSelect={(file) => setUploadedFile(file)}
+            />
             
             <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/10">
               <div className="flex items-start gap-3">
@@ -107,6 +190,12 @@ export function VoiceCloning() {
             />
 
             <div className="flex gap-3">
+              {successMessage && (
+                <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                  {successMessage}
+                </div>
+              )}
+
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -114,11 +203,11 @@ export function VoiceCloning() {
               >
                 <Button 
                   onClick={startTraining}
-                  disabled={isTraining}
-                  className="w-full bg-gradient-to-r from-[#00FF87] to-[#00D9FF] hover:opacity-90 text-white border-0 h-11"
+                  disabled={isTraining || loading || !voiceName.trim() || !uploadedFile || !selectedProjectId}
+                  className="w-full bg-gradient-to-r from-[#00FF87] to-[#00D9FF] hover:opacity-90 text-white border-0 h-11 disabled:opacity-50"
                 >
                   <Upload className="w-5 h-5 mr-2" />
-                  {isTraining ? 'Training...' : 'Train Model'}
+                  {isTraining || loading ? 'Creating Job...' : 'Train Model'}
                 </Button>
               </motion.div>
               

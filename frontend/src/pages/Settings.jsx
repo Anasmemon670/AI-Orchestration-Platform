@@ -6,8 +6,86 @@ import { Switch } from '../components/ui/switch';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPatch } from '../lib/api';
+import { getUser } from '../lib/auth';
 
 export function Settings() {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [settings, setSettings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  // Form state
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('');
+
+  // Load user data and settings
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Get current user from auth
+        const currentUser = getUser();
+        if (currentUser) {
+          setUser(currentUser);
+          setFirstName(currentUser.first_name || '');
+          setLastName(currentUser.last_name || '');
+          setEmail(currentUser.email || currentUser.user?.email || '');
+        }
+
+        // Fetch profile
+        try {
+          const profilesResponse = await apiGet('/profiles/');
+          const profiles = profilesResponse.results || profilesResponse;
+          if (Array.isArray(profiles) && profiles.length > 0) {
+            const userProfile = profiles.find(p => 
+              p.user?.id === currentUser?.id || p.user_id === currentUser?.id
+            ) || profiles[0];
+            setProfile(userProfile);
+            setRole(userProfile.role || '');
+          }
+        } catch (err) {
+          console.warn('Could not fetch profile:', err);
+        }
+
+        // Fetch settings
+        try {
+          const settingsResponse = await apiGet('/settings/');
+          const allSettings = settingsResponse.results || settingsResponse;
+          setSettings(Array.isArray(allSettings) ? allSettings : []);
+        } catch (err) {
+          console.warn('Could not fetch settings:', err);
+        }
+      } catch (error) {
+        console.error('Failed to load settings data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      // Update profile if exists
+      if (profile) {
+        await apiPatch(`/profiles/${profile.id}/`, {
+          role: role,
+        });
+      }
+      alert('Profile updated successfully');
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      alert('Failed to update profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -60,22 +138,37 @@ export function Settings() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-white/80 mb-2 block">First Name</Label>
-                      <Input className="bg-white/5 border-white/10 text-white" defaultValue="VIP" />
+                      <Input 
+                        className="bg-white/5 border-white/10 text-white" 
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        disabled={loading}
+                      />
                     </div>
                     <div>
                       <Label className="text-white/80 mb-2 block">Last Name</Label>
-                      <Input className="bg-white/5 border-white/10 text-white" defaultValue="User" />
+                      <Input 
+                        className="bg-white/5 border-white/10 text-white" 
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        disabled={loading}
+                      />
                     </div>
                   </div>
                   <div>
                     <Label className="text-white/80 mb-2 block">Email</Label>
-                    <Input className="bg-white/5 border-white/10 text-white" defaultValue="vip@aiorch.com" />
+                    <Input 
+                      className="bg-white/5 border-white/10 text-white" 
+                      value={email}
+                      disabled
+                      title="Email cannot be changed"
+                    />
                   </div>
                   <div>
                     <Label className="text-white/80 mb-2 block">Role</Label>
-                    <Select defaultValue="admin">
+                    <Select value={role} onValueChange={setRole} disabled={loading}>
                       <SelectTrigger className="bg-white/5 border-white/10 text-white">
-                        <SelectValue />
+                        <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent className="bg-[#16161F] border-white/10">
                         <SelectItem value="admin" className="text-white">Admin</SelectItem>
@@ -91,8 +184,12 @@ export function Settings() {
                   whileTap={{ scale: 0.98 }}
                   className="mt-6"
                 >
-                  <Button className="bg-gradient-to-r from-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0">
-                    Save Changes
+                  <Button 
+                    className="bg-gradient-to-r from-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0 disabled:opacity-50"
+                    onClick={handleSaveProfile}
+                    disabled={loading || saving}
+                  >
+                    {saving ? 'Saving...' : 'Save Changes'}
                   </Button>
                 </motion.div>
               </div>
@@ -107,10 +204,13 @@ export function Settings() {
                 <h3 className="text-white mb-4">Profile Picture</h3>
                 <div className="flex flex-col items-center gap-4">
                   <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#00D9FF] to-[#9D4EDD] flex items-center justify-center">
-                    <span className="text-white text-2xl">VP</span>
+                    <span className="text-white text-2xl">
+                      {firstName?.[0]?.toUpperCase() || lastName?.[0]?.toUpperCase() || email?.[0]?.toUpperCase() || 'U'}
+                      {lastName?.[0]?.toUpperCase() || ''}
+                    </span>
                   </div>
-                  <Button variant="outline" className="text-white border-white/20 hover:bg-white/10">
-                    Change Photo
+                  <Button variant="outline" className="text-white border-white/20 hover:bg-white/10" disabled>
+                    Change Photo (Coming Soon)
                   </Button>
                 </div>
               </div>
@@ -197,16 +297,10 @@ export function Settings() {
               <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                 <h3 className="text-white mb-4">Active Sessions</h3>
                 <div className="space-y-2">
-                  {['Chrome - Current', 'Firefox - 2 hours ago'].map((session, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                      <span className="text-white text-sm">{session}</span>
-                      {i > 0 && (
-                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-7">
-                          Revoke
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                  <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                    <span className="text-white text-sm">Current Session - {new Date().toLocaleString()}</span>
+                  </div>
+                  <p className="text-white/50 text-xs mt-2">Session management coming soon</p>
                 </div>
               </div>
             </motion.div>

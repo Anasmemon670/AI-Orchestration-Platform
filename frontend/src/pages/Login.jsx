@@ -1,16 +1,38 @@
 import { motion } from 'motion/react';
-import { Sparkles, Lock, Mail } from 'lucide-react';
+import { Sparkles, Lock, Mail, AlertCircle } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { useState } from 'react';
+import { login } from '../lib/auth';
 
 export function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onLogin();
+    setError('');
+    setLoading(true);
+
+    try {
+      // Use email as username (Django SimpleJWT accepts username field)
+      const result = await login(email, password);
+
+      if (result.success) {
+        // Login successful, call onLogin callback
+        onLogin(result.data);
+      } else {
+        // Show error message
+        setError(result.error || 'Login failed. Please try again.');
+      }
+    } catch (err) {
+      setError('Network error. Please check your connection and try again.');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -104,6 +126,18 @@ export function Login({ onLogin }) {
               </div>
             </motion.div>
 
+            {/* Error message */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 flex items-center gap-2 text-red-400 text-sm"
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </motion.div>
+            )}
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -111,14 +145,15 @@ export function Login({ onLogin }) {
             >
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-[#00D9FF] via-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0 h-12"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-[#00D9FF] via-[#9D4EDD] to-[#FF006E] hover:opacity-90 text-white border-0 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <motion.span
-                  whileHover={{ scale: 1.05 }}
+                  whileHover={{ scale: loading ? 1 : 1.05 }}
                   className="flex items-center justify-center gap-2"
                 >
-                  Sign In
-                  <Sparkles className="w-4 h-4" />
+                  {loading ? 'Signing In...' : 'Sign In'}
+                  {!loading && <Sparkles className="w-4 h-4" />}
                 </motion.span>
               </Button>
             </motion.div>

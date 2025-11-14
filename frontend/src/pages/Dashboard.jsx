@@ -19,19 +19,108 @@ export function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [chartData, setChartData] = useState([]);
 
-  // Test API connection on component mount
+  // Fetch live data from API
   useEffect(() => {
-    const testConnection = async () => {
+    const fetchData = async () => {
       try {
-        const response = await apiGet('/test/');
-        setApiStatus(response);
-        console.log('✅ API Connection Successful:', response);
+        // Test API connection
+        try {
+          const testResponse = await apiGet('/test/', false);
+          setApiStatus(testResponse);
+        } catch (testError) {
+          console.warn('Test endpoint failed:', testError);
+        }
+
+        // Fetch projects
+        const projectsResponse = await apiGet('/projects/');
+        const projects = projectsResponse.results || projectsResponse;
+
+        // Fetch jobs
+        const jobsResponse = await apiGet('/jobs/');
+        const allJobs = jobsResponse.results || jobsResponse;
+
+        // Fetch job results
+        const resultsResponse = await apiGet('/job-results/');
+        const jobResults = resultsResponse.results || resultsResponse;
+
+        // Calculate stats from real data
+        const totalJobs = Array.isArray(allJobs) ? allJobs.length : 0;
+        const activeJobs = Array.isArray(allJobs) 
+          ? allJobs.filter(job => job.status === 'running' || job.status === 'pending').length 
+          : 0;
+        const completedJobs = Array.isArray(allJobs)
+          ? allJobs.filter(job => job.status === 'completed').length
+          : 0;
+        const failedJobs = Array.isArray(allJobs)
+          ? allJobs.filter(job => job.status === 'failed').length
+          : 0;
+
+        // Update stats
+        setStats({
+          totalJobs,
+          activeJobs,
+          completedJobs,
+          failedJobs,
+          storageUsed: 0, // TODO: Calculate from actual file sizes
+          storageTotal: 100,
+        });
+
+        // Set jobs (limit to recent 6)
+        const recentJobs = Array.isArray(allJobs) 
+          ? allJobs.slice(0, 6).map(job => ({
+              id: job.id,
+              type: job.type,
+              status: job.status,
+              progress: job.progress || 0,
+              project: job.project || 'Unknown',
+              created_at: job.created_at,
+            }))
+          : [];
+        setJobs(recentJobs);
+
+        // Generate chart data from jobs (last 7 days)
+        const now = new Date();
+        const chartData = [];
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(now);
+          date.setDate(date.getDate() - i);
+          const dateStr = date.toLocaleDateString('en-US', { weekday: 'short' });
+          
+          if (Array.isArray(allJobs)) {
+            const dayJobs = allJobs.filter(job => {
+              const jobDate = new Date(job.created_at);
+              return jobDate.toDateString() === date.toDateString();
+            });
+            
+            chartData.push({
+              name: dateStr,
+              jobs: dayJobs.length,
+              success: dayJobs.filter(j => j.status === 'completed').length,
+              failed: dayJobs.filter(j => j.status === 'failed').length,
+            });
+          } else {
+            chartData.push({
+              name: dateStr,
+              jobs: 0,
+              success: 0,
+              failed: 0,
+            });
+          }
+        }
+        setChartData(chartData);
+
+        console.log('✅ Dashboard data loaded:', {
+          projects: Array.isArray(projects) ? projects.length : 0,
+          jobs: totalJobs,
+          results: Array.isArray(jobResults) ? jobResults.length : 0,
+        });
       } catch (error) {
-        console.error('❌ API Connection Failed:', error);
+        console.error('❌ Failed to fetch dashboard data:', error);
         setApiStatus({ status: 'error', message: error.message });
       }
     };
-    testConnection();
+
+    fetchData();
   }, []);
   return (
     <div className="p-6 space-y-6">

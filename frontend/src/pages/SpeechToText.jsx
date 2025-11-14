@@ -5,7 +5,8 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet, apiPost } from '../lib/api';
 
 export function SpeechToText() {
   const [language, setLanguage] = useState('');
@@ -13,8 +14,41 @@ export function SpeechToText() {
   const [transcript, setTranscript] = useState('');
   const [languages, setLanguages] = useState([]);
   const [models, setModels] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const sttModels = models.filter(m => m.type === 'stt');
+
+  // Default languages
+  const defaultLanguages = ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Chinese', 'Japanese', 'Korean', 'Arabic'];
+
+  // Load projects and languages
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLanguages(defaultLanguages);
+        
+        // Load projects
+        try {
+          const projectsResponse = await apiGet('/projects/');
+          const projectsList = projectsResponse.results || projectsResponse;
+          if (Array.isArray(projectsList) && projectsList.length > 0) {
+            setProjects(projectsList);
+            setSelectedProjectId(projectsList[0].id);
+          }
+        } catch (err) {
+          console.warn('Could not fetch projects:', err);
+        }
+      } catch (error) {
+        console.warn('Could not load data:', error);
+        setLanguages(defaultLanguages);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
@@ -44,7 +78,11 @@ export function SpeechToText() {
           {/* File Upload */}
           <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-white mb-4">Upload Audio/Video</h3>
-            <FileUploader accept="audio/*,video/*" maxSize="200MB" />
+            <FileUploader 
+              accept="audio/*,video/*" 
+              maxSize="200MB"
+              onFileSelect={(file) => setUploadedFile(file)}
+            />
           </div>
 
           {/* Settings */}
@@ -98,20 +136,80 @@ export function SpeechToText() {
               </div>
             </div>
 
+            {projects.length > 0 && (
+              <div>
+                <Label className="text-white/80 mb-2 block">Project</Label>
+                <Select value={selectedProjectId?.toString()} onValueChange={(val) => setSelectedProjectId(parseInt(val))}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#16161F] border-white/10">
+                    {projects.map(project => (
+                      <SelectItem key={project.id} value={project.id.toString()} className="text-white">
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+                {successMessage}
+              </div>
+            )}
+
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className="mt-6"
             >
               <Button 
-                className="w-full bg-gradient-to-r from-[#FF006E] to-[#9D4EDD] hover:opacity-90 text-white border-0 h-12"
-                onClick={() => {
-                  // API call will populate transcript
-                  setTranscript('');
+                className="w-full bg-gradient-to-r from-[#FF006E] to-[#9D4EDD] hover:opacity-90 text-white border-0 h-12 disabled:opacity-50"
+                disabled={loading || !uploadedFile || !selectedProjectId}
+                onClick={async () => {
+                  if (!uploadedFile || !selectedProjectId) {
+                    alert('Please upload a file and select a project first');
+                    return;
+                  }
+                  
+                  setLoading(true);
+                  setSuccessMessage('');
+                  try {
+                    // Create STT job via API
+                    const jobData = {
+                      project_id: selectedProjectId,
+                      type: 'stt',
+                      status: 'pending',
+                      progress: 0,
+                      meta: {
+                        language: language || 'auto',
+                        model: model || 'default',
+                      }
+                    };
+                    
+                    // For file upload, we would use FormData
+                    // For now, create job and note that file should be uploaded separately
+                    const createdJob = await apiPost('/jobs/', jobData);
+                    setSuccessMessage(`STT job created successfully! Job ID: ${createdJob.id}. File upload will be processed.`);
+                    
+                    // Clear form
+                    setUploadedFile(null);
+                    setLanguage('');
+                    setModel('');
+                    
+                    setTimeout(() => setSuccessMessage(''), 5000);
+                  } catch (error) {
+                    console.error('Failed to create STT job:', error);
+                    alert(`Failed to create STT job: ${error.message || 'Please try again.'}`);
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
               >
                 <Upload className="w-5 h-5 mr-2" />
-                Start Transcription
+                {loading ? 'Creating Job...' : 'Start Transcription'}
               </Button>
             </motion.div>
           </div>

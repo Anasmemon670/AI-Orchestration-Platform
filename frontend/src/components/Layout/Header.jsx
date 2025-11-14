@@ -1,8 +1,10 @@
 import { motion } from 'motion/react';
-import { Bell, Search, Moon, Sun } from 'lucide-react';
+import { Bell, Search, Moon, Sun, LogOut } from 'lucide-react';
 import { Input } from '../ui/input';
+import { getUser } from '../../lib/auth';
 
-export function Header({ theme, onThemeToggle }) {
+export function Header({ theme, onThemeToggle, onLogout }) {
+  const user = getUser();
   return (
     <motion.header
       initial={{ y: -80 }}
@@ -37,6 +39,26 @@ export function Header({ theme, onThemeToggle }) {
             3
           </motion.div>
         </motion.button>
+
+        {/* User info */}
+        {user && (
+          <div className="text-white/60 text-sm mr-2">
+            {user.user?.username || 'User'}
+          </div>
+        )}
+
+        {/* Logout */}
+        {onLogout && (
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={onLogout}
+            className="w-10 h-10 rounded-lg bg-white/5 hover:bg-red-500/20 flex items-center justify-center transition-colors group"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5 text-white/60 group-hover:text-red-400 transition-colors" />
+          </motion.button>
+        )}
 
         {/* Theme Toggle */}
         <motion.button

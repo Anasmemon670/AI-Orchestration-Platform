@@ -16,10 +16,44 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from core.views import test_connection
+from django.conf import settings
+from django.conf.urls.static import static
+from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
+from core.serializers import CustomTokenObtainPairSerializer
+from core.views import (
+    test_connection,
+    ProjectViewSet,
+    JobViewSet,
+    JobResultViewSet,
+    ProfileViewSet,
+    SettingsViewSet
+)
+
+# Create DRF router and register viewsets
+router = DefaultRouter()
+router.register(r'projects', ProjectViewSet, basename='project')
+router.register(r'jobs', JobViewSet, basename='job')
+router.register(r'job-results', JobResultViewSet, basename='jobresult')
+router.register(r'profiles', ProfileViewSet, basename='profile')
+router.register(r'settings', SettingsViewSet, basename='settings')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # API endpoints
+    # JWT Token endpoints - using custom serializer that supports email login
+    path('api/token/', TokenObtainPairView.as_view(serializer_class=CustomTokenObtainPairSerializer), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    # API endpoints using DRF router
+    path('api/', include(router.urls)),
+    # Test endpoint (kept for backward compatibility)
     path('api/test/', test_connection, name='test_connection'),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
